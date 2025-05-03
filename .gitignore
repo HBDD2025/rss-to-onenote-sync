@@ -1,0 +1,12 @@
+# 敏感信息
+.env
+token_cache.bin
+
+# Python 缓存和临时文件
+__pycache__/
+*.pyc
+*~
+*.swp
+
+# macOS 系统文件
+.DS_Store

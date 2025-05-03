@@ -1,0 +1,6 @@
+requests
+python-dotenv
+msal
+feedparser
+beautifulsoup4
+lxml
