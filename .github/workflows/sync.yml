@@ -1,57 +1,49 @@
 name: RSS to OneNote Sync
 
 on:
-  workflow_dispatch: # 允许手动在 GitHub 网页上触发运行
+  workflow_dispatch:
   schedule:
-    # 定义定时任务：每小时的 0 分运行 (UTC 时间)
-    # 你可以根据需要调整，比如 '0 */2 * * *' 是每两小时一次
-    - cron: '0 * * * *'
+    - cron: '0 * * * *' # 每小时运行一次
 
 jobs:
   sync:
-    runs-on: ubuntu-latest # 使用最新的 Ubuntu Linux 环境运行
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout code # 步骤1：获取你的代码
-        uses: actions/checkout@v4 # 使用官方的 checkout action
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Set up Python # 步骤2：设置 Python 环境
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10' # 指定 Python 版本 (建议使用 3.9, 3.10, 3.11)
+          python-version: '3.10'
 
-      # 步骤3：缓存依赖项和认证 Token，加速运行并保持登录
       - name: Cache pip dependencies and MSAL token
-        id: cache-pip-token # 给缓存步骤一个 ID
+        id: cache-pip-token
         uses: actions/cache@v4
         with:
           path: |
             ~/.cache/pip
-            token_cache.bin # 缓存认证文件 (注意路径是相对于工作目录)
-          # key 基于操作系统、requirements 文件内容和固定版本号
+            token_cache.bin
           key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}-token-v2
           restore-keys: |
             ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}-token-v2
             ${{ runner.os }}-pip-
+            ${{ runner.os }}-
 
-      - name: Install dependencies # 步骤4：安装脚本需要的库
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run sync script # 步骤5：运行你的 Python 脚本
-        env:
-          # 从 GitHub Secrets 读取客户端 ID，保证安全
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          # GitHub Actions 默认会设置 CI=true
-          CI: true
-        run: python rss_to_onenote.py # 运行主脚本
+      # --- 新增：安装 Xvfb ---
+      - name: Install Xvfb
+        run: sudo apt-get update && sudo apt-get install -y xvfb
 
-      # 步骤6: 保存 Token Cache (如果上一步运行成功且文件有更新)
-      # 注意：actions/cache@v4 默认在作业成功结束时自动保存
-      # 但如果需要在脚本失败也尝试保存，可以用这个 (通常不需要)
-      # - name: Save Token Cache (Post Run)
-      #   if: always() # 无论成功与否都运行
-      #   uses: actions/cache/save@v4
-      #   with:
-      #     path: token_cache.bin
-      #     key: ${{ steps.cache-pip-token.outputs.cache-primary-key }}
+      # --- 修改：使用 xvfb-run 运行 Python 脚本 ---
+      - name: Run sync script
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          CI: true
+        run: xvfb-run python rss_to_onenote.py # 在 python 命令前添加 xvfb-run
+
+      # --- 缓存保存步骤不变 ---
