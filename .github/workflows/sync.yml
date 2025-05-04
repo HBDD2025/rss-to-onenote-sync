@@ -17,22 +17,28 @@ jobs:
       - name: Set up Python # 步骤2：设置 Python 环境
         uses: actions/setup-python@v5
         with:
-          # 使用你之前指定的 3.11 版本
-          python-version: '3.11'
+          python-version: '3.11' # 使用你之前确认的 3.11
 
-      # 步骤3：缓存 pip 依赖和 MSAL Token 文件
+      # 步骤3：缓存依赖项和认证 Token 文件
       - name: Cache pip dependencies and MSAL token
         id: cache-pip-token # 给缓存步骤一个 ID
         uses: actions/cache@v4
         with:
           path: |
             ~/.cache/pip
-            token_cache.bin # 缓存认证文件 (确保 Python 脚本也在此路径写入)
-          # key 基于操作系统、requirements 文件内容和固定版本号
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}-token-v2 # 更新 key 可能会强制刷新缓存
+            ./token_cache.bin  # 明确指定相对于工作目录的路径
+          # key 基于操作系统、requirements 文件内容和新的版本号
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}-token-v3
           restore-keys: |
-            ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}-token-v2
+            ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}-token-v3
             ${{ runner.os }}-pip-
+
+      # 新增：调试缓存恢复情况
+      - name: Debug cache restore
+        run: |
+          echo "Cache hit: ${{ steps.cache-pip-token.outputs.cache-hit }}"
+          echo "Checking for cached token file:"
+          ls -la ./token_cache.bin || echo "token_cache.bin not found after cache restore."
 
       # 步骤4：安装系统依赖和 Python 依赖
       - name: Install dependencies and system packages
@@ -40,22 +46,21 @@ jobs:
           sudo apt-get update && sudo apt-get install -y xvfb dbus-x11
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          # 确认 lxml 已安装 (如果 requirements.txt 里有就不用加这行)
+          # pip install lxml
 
       # 步骤5：运行脚本 (包含环境设置和后台 xvfb)
       - name: Run sync script with virtual display and DBus fix
         env:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           CI: true
-          # --- 添加可能有助于禁用 GPU 和 D-Bus 探测的环境变量 ---
           LIBGL_ALWAYS_SOFTWARE: 1
           NO_GPU: 1
-          DBUS_SESSION_BUS_ADDRESS: "/dev/null" # 指向空设备
-          # ---
+          DBUS_SESSION_BUS_ADDRESS: "/dev/null"
         run: |
           export DISPLAY=:99 # 设置虚拟显示 ID
           Xvfb :99 -screen 0 1024x768x16 & # 启动 xvfb 到后台
           sleep 3 # 短暂等待 xvfb 启动
           python rss_to_onenote.py # 运行主脚本
 
-      # 步骤6: 缓存保存 (actions/cache@v4 默认会在作业成功结束时自动保存)
-      # 无需显式的 save 步骤，除非你想在失败时也强制保存
+      # 步骤6: 缓存保存 (actions/cache@v4 默认会自动保存)
