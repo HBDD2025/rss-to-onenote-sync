@@ -1,34 +1,61 @@
 name: RSS to OneNote Sync
+
 on:
+  workflow_dispatch: # 允许手动触发运行
   schedule:
+    # 定义定时任务：在每天的 UTC 时间 2点, 6点, 10点, 18点 的 0 分运行
+    # (近似对应北京时间 10点, 14点, 18点, 次日凌晨2点)
     - cron: '0 2,6,10,18 * * *'
-  workflow_dispatch:
+
 jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout code # 步骤1：获取你的代码
         uses: actions/checkout@v4
-      - name: Set up Python
+
+      - name: Set up Python # 步骤2：设置 Python 环境
         uses: actions/setup-python@v5
         with:
+          # 使用你之前指定的 3.11 版本
           python-version: '3.11'
-          cache: 'pip'
-      - name: Install dependencies
+
+      # 步骤3：缓存 pip 依赖和 MSAL Token 文件
+      - name: Cache pip dependencies and MSAL token
+        id: cache-pip-token # 给缓存步骤一个 ID
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            token_cache.bin # 缓存认证文件 (确保 Python 脚本也在此路径写入)
+          # key 基于操作系统、requirements 文件内容和固定版本号
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}-token-v2 # 更新 key 可能会强制刷新缓存
+          restore-keys: |
+            ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}-token-v2
+            ${{ runner.os }}-pip-
+
+      # 步骤4：安装系统依赖和 Python 依赖
+      - name: Install dependencies and system packages
         run: |
+          sudo apt-get update && sudo apt-get install -y xvfb dbus-x11
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Run RSS to OneNote sync
+
+      # 步骤5：运行脚本 (包含环境设置和后台 xvfb)
+      - name: Run sync script with virtual display and DBus fix
         env:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          CI: 'true'
+          CI: true
+          # --- 添加可能有助于禁用 GPU 和 D-Bus 探测的环境变量 ---
+          LIBGL_ALWAYS_SOFTWARE: 1
+          NO_GPU: 1
+          DBUS_SESSION_BUS_ADDRESS: "/dev/null" # 指向空设备
+          # ---
         run: |
-          python rss_to_onenote.py
-      - name: Commit cache files
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add token_cache.bin processed_items.txt
-          git commit -m "Update token cache and processed items" || echo "No changes to commit"
-          git push
-EOF
+          export DISPLAY=:99 # 设置虚拟显示 ID
+          Xvfb :99 -screen 0 1024x768x16 & # 启动 xvfb 到后台
+          sleep 3 # 短暂等待 xvfb 启动
+          python rss_to_onenote.py # 运行主脚本
+
+      # 步骤6: 缓存保存 (actions/cache@v4 默认会在作业成功结束时自动保存)
+      # 无需显式的 save 步骤，除非你想在失败时也强制保存
