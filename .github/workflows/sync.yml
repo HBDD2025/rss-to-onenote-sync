@@ -1,53 +1,34 @@
 name: RSS to OneNote Sync
-
 on:
-  workflow_dispatch: # 允许手动触发运行
   schedule:
-    # 定义定时任务：在每天的 UTC 时间 2点, 6点, 10点, 18点 的 0 分运行
     - cron: '0 2,6,10,18 * * *'
-
+  workflow_dispatch:
 jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10' # 或你使用的版本
-
-      # 缓存依赖项和 Token
-      - name: Cache pip dependencies and MSAL token
-        id: cache-pip-token
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/pip
-            token_cache.bin # 缓存认证文件
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}-token-v2 # key 可以更新 v 版本强制刷新缓存
-          restore-keys: |
-            ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}-token-v2
-            ${{ runner.os }}-pip-
-
-      # --- 修改：安装依赖，增加 xvfb 和 dbus-x11 ---
-      - name: Install dependencies and system packages
+          python-version: '3.11'
+          cache: 'pip'
+      - name: Install dependencies
         run: |
-          sudo apt-get update && sudo apt-get install -y xvfb dbus-x11
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-
-      # --- 修改：运行脚本前设置环境并启动 xvfb ---
-      - name: Run sync script with virtual display and DBus fix
+      - name: Run RSS to OneNote sync
         env:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          CI: true
+          CI: 'true'
         run: |
-          export DISPLAY=:99
-          export DBUS_SESSION_BUS_ADDRESS="/dev/null" # 尝试将 DBus 指向空设备
-          Xvfb :99 -screen 0 1024x768x16 & # 启动 xvfb 到后台，使用 16 位色深可能更稳定
-          sleep 3 # 等待 xvfb 启动
-          python rss_to_onenote.py # 运行主脚本（不再需要 xvfb-run 前缀）
-
-      # --- 缓存保存不变 ---
+          python rss_to_onenote.py
+      - name: Commit cache files
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add token_cache.bin processed_items.txt
+          git commit -m "Update token cache and processed items" || echo "No changes to commit"
+          git push
+EOF
