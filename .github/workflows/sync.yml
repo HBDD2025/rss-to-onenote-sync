@@ -17,26 +17,36 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Cache pip dependencies and MSAL token
-        id: cache-pip-token
+      # 缓存 pip 依赖
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}-v1
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      # 缓存 token_cache.bin 和 processed_items.txt
+      - name: Cache MSAL token and processed items
+        id: cache-token
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cache/pip
-            ./token_cache.bin
-            ./processed_items.txt  # 去重文件缓存
-          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}-token-v6
+            ./rss2onenote/token_cache.bin
+            ./rss2onenote/processed_items.txt
+          key: ${{ runner.os }}-token-${{ hashFiles('./rss2onenote/token_cache.bin', './rss2onenote/processed_items.txt') }}-v1
           restore-keys: |
-            ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}-token-v6
-            ${{ runner.os }}-pip-
+            ${{ runner.os }}-token-
 
       - name: Debug cache restore
         run: |
-          echo "Cache hit: ${{ steps.cache-pip-token.outputs.cache-hit }}"
-          echo "Checking for cached token file:"
-          ls -la ./token_cache.bin || echo "token_cache.bin not found after cache restore."
-          ls -la ./processed_items.txt || echo "processed_items.txt not found after cache restore."
-          if [ -f ./token_cache.bin ]; then echo "token_cache.bin is readable."; else echo "token_cache.bin is missing."; fi
+          echo "Cache hit: ${{ steps.cache-token.outputs.cache-hit }}"
+          echo "Checking for cached files in ./rss2onenote/:"
+          ls -la ./rss2onenote/ || echo "rss2onenote directory not found."
+          ls -la ./rss2onenote/token_cache.bin || echo "token_cache.bin not found after cache restore."
+          ls -la ./rss2onenote/processed_items.txt || echo "processed_items.txt not found after cache restore."
+          if [ -f ./rss2onenote/token_cache.bin ]; then echo "token_cache.bin is readable."; else echo "token_cache.bin is missing."; fi
+          if [ -f ./rss2onenote/processed_items.txt ]; then echo "processed_items.txt is readable."; else echo "processed_items.txt is missing."; fi
 
       - name: Install dependencies and system packages
         run: |
@@ -56,7 +66,7 @@ jobs:
           Xvfb :99 -screen 0 1024x768x16 &
           sleep 3
           echo "Starting rss_to_onenote.py at $(date)"
-          python rss_to_onenote.py
+          python ./rss2onenote/rss_to_onenote.py
           echo "Finished rss_to_onenote.py at $(date)"
-          if [ -f ./token_cache.bin ]; then echo "Token cache updated successfully."; else echo "Token cache not updated."; fi
-          if [ -f ./processed_items.txt ]; then echo "Processed items updated successfully."; else echo "Processed items not updated."; fi
+          if [ -f ./rss2onenote/token_cache.bin ]; then echo "Token cache updated successfully."; else echo "Token cache not updated."; fi
+          if [ -f ./rss2onenote/processed_items.txt ]; then echo "Processed items updated successfully."; else echo "Processed items not updated."; fi
