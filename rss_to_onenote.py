@@ -534,11 +534,7 @@ if __name__ == "__main__":
 
     all_entries = fetch_rss_feeds()
 
-    new_entries = []
-    for entry in all_entries:
-        check_id = entry['id']
-        if check_id not in processed_ids:
-            new_entries.append(entry)
+    new_entries = [entry for entry in all_entries if entry['id'] not in processed_ids]
 
     print(f"\n[筛选结果] 发现 {len(new_entries)} 条新条目。")
 
@@ -624,4 +620,4 @@ if __name__ == "__main__":
             save_processed_items(newly_processed_ids_in_run)
 
     run_end_time = time.time()
-    print(f"\n=== 同步完成于: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (总耗时: {run_end_time - run_start_time:.2f} 秒) ===")
+    print(f"\n=== 同步完成于: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (总耗时: {run_end_time - run_start_time:.2f} 秒) ==="
