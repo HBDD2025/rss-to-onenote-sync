@@ -28,28 +28,28 @@ jobs:
             ~/.cache/pip
             ./token_cache.bin  # 明确指定相对于工作目录的路径
           # key 基于操作系统、requirements 文件内容和新的版本号
-          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}-token-v3
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}-token-v4  # 更新版本号以强制刷新缓存
           restore-keys: |
-            ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}-token-v3
+            ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}-token-v4
             ${{ runner.os }}-pip-
 
-      # 新增：调试缓存恢复情况
+      # 步骤4：调试缓存恢复情况
       - name: Debug cache restore
         run: |
           echo "Cache hit: ${{ steps.cache-pip-token.outputs.cache-hit }}"
           echo "Checking for cached token file:"
           ls -la ./token_cache.bin || echo "token_cache.bin not found after cache restore."
+          # 验证 token_cache.bin 是否可读
+          if [ -f ./token_cache.bin ]; then echo "token_cache.bin is readable."; else echo "token_cache.bin is missing."; fi
 
-      # 步骤4：安装系统依赖和 Python 依赖
+      # 步骤5：安装系统依赖和 Python 依赖
       - name: Install dependencies and system packages
         run: |
           sudo apt-get update && sudo apt-get install -y xvfb dbus-x11
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          # 确认 lxml 已安装 (如果 requirements.txt 里有就不用加这行)
-          # pip install lxml
 
-      # 步骤5：运行脚本 (包含环境设置和后台 xvfb)
+      # 步骤6：运行脚本 (包含环境设置和后台 xvfb)
       - name: Run sync script with virtual display and DBus fix
         env:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
@@ -59,8 +59,8 @@ jobs:
           DBUS_SESSION_BUS_ADDRESS: "/dev/null"
         run: |
           export DISPLAY=:99 # 设置虚拟显示 ID
-          Xvfb :99 -screen 0 1024x768x16 & # 启动 xvfb 到后台
+          Xvfb :99 -screen 0 1024x768x16 -xkbmap us & # 使用 -xkbmap us 消除 xkbcomp 警告
           sleep 3 # 短暂等待 xvfb 启动
+          echo "Starting rss_to_onenote.py at $(date)"
           python rss_to_onenote.py # 运行主脚本
-
-      # 步骤6: 缓存保存 (actions/cache@v4 默认会自动保存)
+          echo "Finished rss_to_onenote.py at $(date)"
