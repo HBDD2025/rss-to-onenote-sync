@@ -3,53 +3,47 @@ name: RSS to OneNote Sync
 on:
   workflow_dispatch: # 允许手动触发运行
   schedule:
-    # 定义定时任务：在每天的 UTC 时间 2点, 6点, 10点, 18点 的 0 分运行
-    # (近似对应北京时间 10点, 14点, 18点, 次日凌晨2点)
-    - cron: '0 2,6,10,18 * * *'
+    - cron: '0 * * * *'  # 每小时的第 0 分运行（北京时间每小时整点）
 
 jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code # 步骤1：获取你的代码
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python # 步骤2：设置 Python 环境
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11' # 使用你之前确认的 3.11
+          python-version: '3.11'
 
-      # 步骤3：缓存依赖项和认证 Token 文件
       - name: Cache pip dependencies and MSAL token
-        id: cache-pip-token # 给缓存步骤一个 ID
+        id: cache-pip-token
         uses: actions/cache@v4
         with:
           path: |
             ~/.cache/pip
-            ./token_cache.bin  # 明确指定相对于工作目录的路径
-          # key 基于操作系统、requirements 文件内容和新的版本号
-          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}-token-v4
+            ./token_cache.bin
+            ./processed_items.txt  # 去重文件缓存
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}-token-v6
           restore-keys: |
-            ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}-token-v4
+            ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}-token-v6
             ${{ runner.os }}-pip-
 
-      # 步骤4：调试缓存恢复情况
       - name: Debug cache restore
         run: |
           echo "Cache hit: ${{ steps.cache-pip-token.outputs.cache-hit }}"
           echo "Checking for cached token file:"
           ls -la ./token_cache.bin || echo "token_cache.bin not found after cache restore."
-          # 验证 token_cache.bin 是否可读
+          ls -la ./processed_items.txt || echo "processed_items.txt not found after cache restore."
           if [ -f ./token_cache.bin ]; then echo "token_cache.bin is readable."; else echo "token_cache.bin is missing."; fi
 
-      # 步骤5：安装系统依赖和 Python 依赖
       - name: Install dependencies and system packages
         run: |
           sudo apt-get update && sudo apt-get install -y xvfb dbus-x11
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # 步骤6：运行脚本 (包含环境设置和后台 xvfb)
       - name: Run sync script with virtual display and DBus fix
         env:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
@@ -58,9 +52,11 @@ jobs:
           NO_GPU: 1
           DBUS_SESSION_BUS_ADDRESS: "/dev/null"
         run: |
-          export DISPLAY=:99 # 设置虚拟显示 ID
-          Xvfb :99 -screen 0 1024x768x16 & # 移除 -xkbmap us，避免错误
-          sleep 3 # 短暂等待 xvfb 启动
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1024x768x16 &
+          sleep 3
           echo "Starting rss_to_onenote.py at $(date)"
-          python rss_to_onenote.py # 运行主脚本
+          python rss_to_onenote.py
           echo "Finished rss_to_onenote.py at $(date)"
+          if [ -f ./token_cache.bin ]; then echo "Token cache updated successfully."; else echo "Token cache not updated."; fi
+          if [ -f ./processed_items.txt ]; then echo "Processed items updated successfully."; else echo "Processed items not updated."; fi
