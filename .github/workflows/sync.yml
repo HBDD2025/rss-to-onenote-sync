@@ -28,7 +28,7 @@ jobs:
             ~/.cache/pip
             ./token_cache.bin  # 明确指定相对于工作目录的路径
           # key 基于操作系统、requirements 文件内容和新的版本号
-          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}-token-v4  # 更新版本号以强制刷新缓存
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}-token-v4
           restore-keys: |
             ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}-token-v4
             ${{ runner.os }}-pip-
@@ -59,7 +59,7 @@ jobs:
           DBUS_SESSION_BUS_ADDRESS: "/dev/null"
         run: |
           export DISPLAY=:99 # 设置虚拟显示 ID
-          Xvfb :99 -screen 0 1024x768x16 -xkbmap us & # 使用 -xkbmap us 消除 xkbcomp 警告
+          Xvfb :99 -screen 0 1024x768x16 & # 移除 -xkbmap us，避免错误
           sleep 3 # 短暂等待 xvfb 启动
           echo "Starting rss_to_onenote.py at $(date)"
           python rss_to_onenote.py # 运行主脚本
