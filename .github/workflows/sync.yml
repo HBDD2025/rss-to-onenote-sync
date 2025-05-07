@@ -1,86 +1,88 @@
-    name: RSS to OneNote Sync
+name: RSS to OneNote Sync
 
-    on:
-      workflow_dispatch: # 允许手动触发运行
-      schedule:
-        - cron: '0 * * * *'  # 每小时的第 0 分运行（UTC 时间）
+on:
+  workflow_dispatch: # 允许手动触发运行
+  schedule:
+    - cron: '0 * * * *'  # 每小时的第 0 分运行（UTC 时间）
 
-    jobs:
-      sync:
-        runs-on: ubuntu-latest
-        steps:
-          - name: Checkout code
-            uses: actions/checkout@v4
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-          - name: Set up Python
-            uses: actions/setup-python@v5
-            with:
-              python-version: '3.11'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-          # 缓存 pip 依赖
-          - name: Cache pip dependencies
-            id: cache-pip
-            uses: actions/cache@v4
-            with:
-              path: ~/.cache/pip
-              key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}-v1
-              restore-keys: |
-                ${{ runner.os }}-pip-
+      # 缓存 pip 依赖
+      - name: Cache pip dependencies
+        id: cache-pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}-v1 # 保持你原来的 pip 缓存 key
+          restore-keys: |
+            ${{ runner.os }}-pip-
 
-          # 缓存 token_cache.bin 和 processed_items.txt
-          - name: Cache MSAL token and processed items
-            id: cache-token
-            uses: actions/cache@v4
-            with:
-              path: |
-                ./token_cache.bin
-                ./processed_items.txt
-              key: ${{ runner.os }}-token-${{ hashFiles('./token_cache.bin', './processed_items.txt') }}-v1 # 保持你版本中的 Key
-              restore-keys: |
-                ${{ runner.os }}-token-
+      # 缓存 token_cache.bin 和 processed_items.txt
+      - name: Cache MSAL token and processed items
+        id: cache-token
+        uses: actions/cache@v4
+        with:
+          path: |
+            ./token_cache.bin
+            ./processed_items.txt
+          # --- 关键修改：使用一个稳定的、带版本号的 Key ---
+          # 版本号 'v2' 可以让你在需要强制刷新缓存时手动递增 (例如改为 v3)
+          key: ${{ runner.os }}-app-state-v2
+          restore-keys: |
+            ${{ runner.os }}-app-state-
+          # --- 结束关键修改 ---
 
-          - name: Debug cache restore
-            run: |
-              echo "Cache pip hit: ${{ steps.cache-pip.outputs.cache-hit }}"
-              echo "Cache token hit: ${{ steps.cache-token.outputs.cache-hit }}"
-              echo "Checking for cached files in ./:"
-              ls -la ./token_cache.bin || echo "token_cache.bin not found after cache restore."
-              ls -la ./processed_items.txt || echo "processed_items.txt not found after cache restore."
-              if [ -f ./token_cache.bin ]; then echo "token_cache.bin is readable."; else echo "token_cache.bin is missing."; fi
-              if [ -f ./processed_items.txt ]; then echo "processed_items.txt is readable."; else echo "processed_items.txt is missing."; fi
+      - name: Debug cache restore
+        run: |
+          echo "Cache pip hit: ${{ steps.cache-pip.outputs.cache-hit }}"
+          echo "Cache token hit: ${{ steps.cache-token.outputs.cache-hit }}"
+          echo "Checking for cached files in ./:"
+          ls -la ./token_cache.bin || echo "token_cache.bin not found after cache restore."
+          ls -la ./processed_items.txt || echo "processed_items.txt not found after cache restore."
+          if [ -f ./token_cache.bin ]; then echo "token_cache.bin is readable."; else echo "token_cache.bin is missing."; fi
+          if [ -f ./processed_items.txt ]; then echo "processed_items.txt is readable."; else echo "processed_items.txt is missing."; fi
 
-          - name: Verify script file
-            run: |
-              ls -la ./ || echo "Root directory not found."
-              if [ -f ./rss_to_onenote.py ]; then echo "rss_to_onenote.py found."; else echo "rss_to_onenote.py not found."; fi
+      - name: Verify script file
+        run: |
+          ls -la ./ || echo "Root directory not found."
+          if [ -f ./rss_to_onenote.py ]; then echo "rss_to_onenote.py found."; else echo "rss_to_onenote.py not found."; fi
 
-          # 安装系统依赖和 Python 依赖
-          - name: Install dependencies and system packages
-            run: |
-              sudo apt-get update && sudo apt-get install -y xvfb dbus-x11 # 保持
-              python -m pip install --upgrade pip
-              pip install -r requirements.txt
-              pip install lxml # <-- 确保 lxml 被安装
-              python -m pip show lxml || echo "LXML install check failed!" # 检查 lxml 是否安装成功
+      # 安装系统依赖和 Python 依赖
+      - name: Install dependencies and system packages
+        run: |
+          sudo apt-get update && sudo apt-get install -y xvfb dbus-x11
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install lxml # 确保 lxml 被安装
+          python -m pip show lxml || echo "LXML install check failed!"
 
-          # 运行脚本
-          - name: Run sync script with virtual display and DBus fix
-            env:
-              AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-              CI: true
-              LIBGL_ALWAYS_SOFTWARE: 1 # 保持
-              NO_GPU: 1 # 保持
-              DBUS_SESSION_BUS_ADDRESS: "/dev/null" # 保持
-            run: |
-              export DISPLAY=:99 # 保持
-              Xvfb :99 -screen 0 1024x768x16 & # 保持
-              sleep 3 # 保持
-              echo "Starting rss_to_onenote.py at $(date)"
-              python rss_to_onenote.py # 保持
-              echo "Finished rss_to_onenote.py at $(date)"
-              echo "Checking files after script execution:" # 保持
-              ls -la ./token_cache.bin || echo "token_cache.bin not found after script run." # 保持
-              ls -la ./processed_items.txt || echo "processed_items.txt not found after script run." # 保持
+      # 运行脚本
+      - name: Run sync script with virtual display and DBus fix
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          CI: true
+          LIBGL_ALWAYS_SOFTWARE: 1
+          NO_GPU: 1
+          DBUS_SESSION_BUS_ADDRESS: "/dev/null"
+        run: |
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1024x768x16 &
+          sleep 3
+          echo "Starting rss_to_onenote.py at $(date)"
+          python rss_to_onenote.py
+          echo "Finished rss_to_onenote.py at $(date)"
+          echo "Checking files after script execution:"
+          ls -la ./token_cache.bin || echo "token_cache.bin not found after script run."
+          ls -la ./processed_items.txt || echo "processed_items.txt not found after script run."
 
-          # 缓存保存步骤 (actions/cache@v4 默认会自动保存)
-    
+      # 缓存保存步骤 (actions/cache@v4 默认会自动保存，无需显式 save 步骤)
