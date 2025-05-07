@@ -23,7 +23,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}-v1 # 保持你原来的 pip 缓存 key
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}-v1
           restore-keys: |
             ${{ runner.os }}-pip-
 
@@ -35,9 +35,9 @@ jobs:
           path: |
             ./token_cache.bin
             ./processed_items.txt
-          # --- 关键修改：使用一个稳定的、带版本号的 Key ---
-          # 版本号 'v2' 可以让你在需要强制刷新缓存时手动递增 (例如改为 v3)
-          key: ${{ runner.os }}-app-state-v2
+          # --- 关键修改：使用包含 github.run_id 的 Key 来确保每次都尝试保存 ---
+          key: ${{ runner.os }}-app-state-${{ github.run_id }}
+          # --- 恢复时，查找最新的以这个固定前缀开头的缓存 ---
           restore-keys: |
             ${{ runner.os }}-app-state-
           # --- 结束关键修改 ---
@@ -85,4 +85,4 @@ jobs:
           ls -la ./token_cache.bin || echo "token_cache.bin not found after script run."
           ls -la ./processed_items.txt || echo "processed_items.txt not found after script run."
 
-      # 缓存保存步骤 (actions/cache@v4 默认会自动保存，无需显式 save 步骤)
+      # 缓存保存步骤 (actions/cache@v4 默认会自动保存，因为我们用了新的 key 策略)
