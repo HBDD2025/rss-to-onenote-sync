@@ -19,7 +19,7 @@
 
           # 缓存 pip 依赖
           - name: Cache pip dependencies
-            id: cache-pip
+            id: cache-pip # Give an id to the pip cache step
             uses: actions/cache@v4
             with:
               path: ~/.cache/pip
@@ -29,24 +29,24 @@
 
           # 缓存 token_cache.bin 和 processed_items.txt
           - name: Cache MSAL token and processed items
-            id: cache-token
+            id: cache-token # Give an id to the token cache step
             uses: actions/cache@v4
             with:
               path: |
                 ./token_cache.bin
                 ./processed_items.txt
-              # --- 使用一个固定的、带版本号的 Key ---
-              # 你可以根据需要修改版本号 v1, v2, v3... 以强制刷新缓存
-              key: ${{ runner.os }}-app-state-v2 # 例如，使用 v2
+              # --- 关键修改：主 key 包含 run_id，确保每次都尝试保存新的 (如果内容有变) ---
+              key: ${{ runner.os }}-app-state-${{ github.run_id }} # This key will be unique for each run
+              # --- 恢复时，查找最新的以这个固定前缀开头的缓存 ---
               restore-keys: |
                 ${{ runner.os }}-app-state-
-              # --- 结束修改 ---
+              # --- 结束关键修改 ---
 
           - name: Debug cache restore
             run: |
               echo "Cache pip hit: ${{ steps.cache-pip.outputs.cache-hit }}"
-              echo "Cache token hit: ${{ steps.cache-token.outputs.cache-hit }}"
-              echo "Checking for cached files in ./:"
+              echo "Cache token hit: ${{ steps.cache-token.outputs.cache-hit }}" # This might show false if run_id key is new
+              echo "Checking for cached files in ./ after restore attempt:"
               ls -la ./token_cache.bin || echo "token_cache.bin not found after cache restore."
               ls -la ./processed_items.txt || echo "processed_items.txt not found after cache restore."
               if [ -f ./token_cache.bin ]; then echo "token_cache.bin is readable."; else echo "token_cache.bin is missing."; fi
