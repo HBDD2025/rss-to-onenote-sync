@@ -1,10 +1,10 @@
+requests
+python-dotenv
 msal>=1.23.0
 msal-extensions>=1.0.0
-requests
 feedparser
 beautifulsoup4
-lxml # 添加 lxml
-python-dotenv
+lxml
 certifi
 urllib3
 idna
