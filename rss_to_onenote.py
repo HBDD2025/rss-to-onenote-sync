@@ -55,7 +55,9 @@ ORIGINAL_FEEDS = [
     "http://www.jintiankansha.me/rss/GM2TSMRUGZ6DAMZSGY4DQNJRGZSDKMJUMQ4GEY3GG4ZGINDFMJRGGYRTMMYGGOBSHBTDGNDBMM4A====", # 国寿研究声 (名称已修改)
     "http://www.jintiankansha.me/rss/GEYDANZXHF6DCMDBMZSDGMDDMRTDMZRYGIYDANTEGA3TMYRTGAYGINLEGYZDIMLBGQYWEMBTHAZQ====", # 欣琦看金融
     "https://hbdd2025.github.io/my-hexun-rss/hexun_insurance_rss.xml", # 和讯保险 (原已存在)
-    "https://hbdd2025.github.io/nfra-rss-feed/nfra_rss.xml", # <--- 新添加的 RSS 源
+    "https://hbdd2025.github.io/nfra-rss-feed/nfra_rss.xml", # 总局官网
+    "http://www.jintiankansha.me/rss/GEYTGOBYPQZDKNDGMQZDQMRWGA2TQZRRGU2DGMTEG4ZWMMRXME3TSODBGFSTENRQGBT", # <--- 新添加: 中金点睛
+    "http://www.jintiankansha.me/rss/GMZTONZRHF6DQZJSMY4GIMJQG5TGMZBWHA4WIMJWGUYTKNBYG5QTKYJVMQYGINJYGAYDEODEGFTA====", # <--- 新添加: 保煎烩
 ]
 
 FEED_SOURCES = {
@@ -72,10 +74,12 @@ FEED_SOURCES = {
     "http://www.jintiankansha.me/rss/GMZTMNBRHB6DOMDBGFRTCZDCGRQTOMTDMY3TMMBSME2DQMRWGUZWMNLBMUYDCZRRG44DINZXHE3Q====": "中保学",
     "http://www.jintiankansha.me/rss/GMZTONZSGF6DMZDFGU3DIMLCGIYWINRVGM3WCMZWGA3TSZBQGRRTCODCMNRWCMDGMI3DAZRUMFRQ====": "说点保",
     "http://www.jintiankansha.me/rss/GMZTONZSGN6DMOBSHFSDSMLEGQYTEZBRHBRTQNDCGMZWIMBTGYYDOMBWG44DQY3FHAZGMOJUMI4A====": "今日保",
-    "http://www.jintiankansha.me/rss/GM2TSMRUGZ6DAMZSGY4DQNJRGZSDKMJUMQ4GEY3GG4ZGINDFMJRGGYRTMMYGGOBSHBTDGNDBMM4A====": "国寿研究声", # 名称已修改
+    "http://www.jintiankansha.me/rss/GM2TSMRUGZ6DAMZSGY4DQNJRGZSDKMJUMQ4GEY3GG4ZGINDFMJRGGYRTMMYGGOBSHBTDGNDBMM4A====": "国寿研究声",
     "http://www.jintiankansha.me/rss/GEYDANZXHF6DCMDBMZSDGMDDMRTDMZRYGIYDANTEGA3TMYRTGAYGINLEGYZDIMLBGQYWEMBTHAZQ====": "欣琦看金融",
-    "https://hbdd2025.github.io/my-hexun-rss/hexun_insurance_rss.xml": "和讯保险", # 和讯保险 (原已存在)
-    "https://hbdd2025.github.io/nfra-rss-feed/nfra_rss.xml": "总局官网", # <--- 新添加的 RSS 源，并命名为 "总局官网"
+    "https://hbdd2025.github.io/my-hexun-rss/hexun_insurance_rss.xml": "和讯保险",
+    "https://hbdd2025.github.io/nfra-rss-feed/nfra_rss.xml": "总局官网",
+    "http://www.jintiankansha.me/rss/GEYTGOBYPQZDKNDGMQZDQMRWGA2TQZRRGU2DGMTEG4ZWMMRXME3TSODBGFSTENRQGBT": "中金点睛", # <--- 新添加
+    "http://www.jintiankansha.me/rss/GMZTONZRHF6DQZJSMY4GIMJQG5TGMZBWHA4WIMJWGUYTKNBYG5QTKYJVMQYGINJYGAYDEODEGFTA====": "保煎烩", # <--- 新添加
 }
 # --- END RSS 配置 ---
 
@@ -267,7 +271,7 @@ def get_full_content_from_link(url, source_name, feed_url, verify_ssl=True):
             soup = BeautifulSoup(response.text, 'html.parser')
 
         # --- 时间提取 ---
-        if source_name and source_name.startswith('和讯'): # 规则保留
+        if source_name and (source_name == '和讯保险' or source_name.startswith('和讯-')): # 规则保留, 涵盖修改后的和讯来源
             print(f"  >> [时间抓取] 来源 '{source_name}'，尝试和讯规则...")
             try:
                 date_span = soup.select_one('span.pr20')
@@ -327,17 +331,12 @@ def get_full_content_from_link(url, source_name, feed_url, verify_ssl=True):
 
         # --- 内容提取 ---
         selectors = []
-        # 为 "总局官网" (或以 "总局" 开头的) 应用特定选择器
         if source_name and source_name.startswith('总局'):
             selectors.extend(['div.content', 'div#zoom', '.pages_content', 'div.view.TRS_UEDITOR.trs_paper_default.trs_word'])
-        elif source_name and source_name.startswith('和讯'):
-            selectors.extend(['div.art_contextBox', 'div.art_context']) # 规则保留
-        # 为您的新特定源 "和讯保险" 添加可能的选择器 (如果之前代码中有此逻辑，则保留)
-        # 注意：您提供的原始代码中，"和讯保险"的特定内容提取规则是针对时间的，内容选择器是通用的。
-        # 此处我们假设如果source_name是"和讯保险"，它会走和讯的时间规则，内容则依赖通用选择器或上面已有的和讯规则。
+        elif source_name and (source_name == '和讯保险' or source_name.startswith('和讯-')): # 同样更新和讯规则适用条件
+            selectors.extend(['div.art_contextBox', 'div.art_context'])
         elif is_jintiankansha_source:
             selectors.extend(['div.rich_media_content', 'div#js_content', 'div.wx-content'])
-        # 通用选择器列表
         selectors.extend([ 'article', '.article-content', '.entry-content', '.post-content', '.post-body', '#article-body', '#entry-content', 'div[itemprop="articleBody"]', 'div.main-content', 'div.entry', 'div[class*=content i]', 'div[class*=article i]', 'div[class*=post i]', 'div[class*=body i]', 'div[id*=content i]', 'div[id*=article i]', 'div[id*=post i]', 'div[id*=body i]', 'main' ])
         article_body = None; found_selector = None
         for selector in selectors:
@@ -345,12 +344,12 @@ def get_full_content_from_link(url, source_name, feed_url, verify_ssl=True):
                 target = soup.select_one(selector)
                 if target:
                     text_len = len(target.get_text(strip=True))
-                    if text_len > 30 or target.find('img'): # 确保内容区域不为空或仅包含少量文字
+                    if text_len > 30 or target.find('img'):
                         article_body = target
                         found_selector = selector
                         print(f"  >> [内容抓取] 找到内容区域 (选择器: {selector})。")
                         break
-            except Exception as e: continue # 忽略单个选择器错误
+            except Exception as e: continue
         if article_body:
             print(f"  >> [内容抓取] 最终选用选择器: {found_selector}")
             print("  >> [图片路径修复] 开始处理图片链接...")
@@ -366,7 +365,7 @@ def get_full_content_from_link(url, source_name, feed_url, verify_ssl=True):
                                     img['src'] = absolute_src
                                     img_fixed_count += 1
                                 except Exception as url_e:
-                                    pass # 忽略单个图片链接修复错误
+                                    pass
                             elif 'data-src' in img.attrs and img.get('src') != img['data-src']:
                                 data_src = img['data-src']
                                 if data_src and not data_src.startswith(('http://', 'https://', 'data:')):
@@ -375,11 +374,11 @@ def get_full_content_from_link(url, source_name, feed_url, verify_ssl=True):
                                         img['src'] = absolute_src
                                         img_fixed_count += 1
                                     except Exception as url_e:
-                                        pass # 忽略单个图片链接修复错误
-                                else: # 如果data-src是绝对路径或data URI
+                                        pass
+                                else:
                                     img['src'] = data_src
                     except Exception as img_e:
-                        pass # 忽略处理单个图片的错误
+                        pass
             if img_fixed_count > 0: print(f"  >> [图片路径修复] 完成，共修复/处理 {img_fixed_count} 个。")
             else: print("  >> [图片路径修复] 未找到需修复或处理的图片链接。")
             content_before_cleaning = str(article_body)
@@ -399,30 +398,27 @@ def fetch_rss_feeds():
     processed_urls_in_run = set()
     for feed_url in ORIGINAL_FEEDS:
         if feed_url in processed_urls_in_run:
-            continue # 跳过已处理（例如重定向后）的URL
-        source_name = FEED_SOURCES.get(feed_url, feed_url) # 获取源名称，如果未定义则使用URL本身
-        print(f"  处理中: {source_name} ({feed_url})")
+            continue
+        source_name_from_dict = FEED_SOURCES.get(feed_url, feed_url)
+        print(f"  处理中: {source_name_from_dict} ({feed_url})")
         actual_url = feed_url
         try:
-            # 使用 feedparser 获取和解析 feed
             feed_data = feedparser.parse(feed_url, agent=get_user_agent()['User-Agent'], request_headers=get_user_agent())
             
-            # 检查 feedparser 是否遇到重定向，并更新实际URL和处理过的URL集合
             if hasattr(feed_data, 'href') and feed_data.href != feed_url:
                 print(f"  >> Feed URL 重定向到: {feed_data.href}")
                 actual_url = feed_data.href
-                FEED_SOURCES.setdefault(actual_url, source_name) # 确保重定向后的URL也有名称映射
-                processed_urls_in_run.add(actual_url) # 将实际处理的URL加入集合
+                FEED_SOURCES.setdefault(actual_url, source_name_from_dict) 
+                processed_urls_in_run.add(actual_url) 
 
             if feed_data.bozo:
-                print(f"  警告: 解析 Feed '{source_name}' 时问题: {feed_data.bozo_exception}")
+                print(f"  警告: 解析 Feed '{source_name_from_dict}' 时问题: {feed_data.bozo_exception}")
             
             if not feed_data.entries:
                 print("  警告: 未获取到任何条目。")
                 continue
 
             for entry in feed_data.entries:
-                # 构造唯一ID
                 entry_id = entry.get('id', entry.get('link')) or f"{entry.get('title', '无标题')}_{entry.get('published', entry.get('updated', time.time()))}"
                 
                 published_time_rss = None
@@ -432,44 +428,57 @@ def fetch_rss_feeds():
                         published_time_rss = datetime.fromtimestamp(time.mktime(pub_parsed))
                     except (ValueError, OverflowError) as e:
                         print(f"  警告: 条目 '{entry.get('title', '')[:30]}...' RSS 时间戳无效: {pub_parsed}, Error: {e}")
-                        published_time_rss = None # 重置为None确保后续逻辑正确处理
+                        published_time_rss = None
                 
                 title = entry.get('title', '无标题').strip()
                 link = entry.get('link', '').strip()
 
-                # 获取内容摘要
                 content_summary = ""
                 if 'content' in entry and entry.content:
-                    # 优先选择 HTML 类型的内容
                     html_content = next((c.value for c in entry.content if c.type and 'html' in c.type.lower()), None)
                     content_summary = html_content if html_content else next((f"<p>{html.escape(c.value)}</p>" for c in entry.content if c.type and 'text' in c.type.lower()), "")
                 if not content_summary and 'summary' in entry:
                     content_summary = entry.summary
-                elif not content_summary and 'description' in entry: # 有些feed用description
+                elif not content_summary and 'description' in entry:
                     content_summary = entry.description
 
-                if not entry_id or not title: # 跳过没有ID或标题的条目
+                if not entry_id or not title:
                     continue
+                
+                # Determine the source name, special handling for Hexun
+                current_source_name = FEED_SOURCES.get(actual_url, source_name_from_dict)
+                display_source_name = current_source_name # Default display name
+                
+                # --- MODIFICATION FOR HEXUN SOURCE ---
+                if current_source_name == "和讯保险" and " | " in title:
+                    try:
+                        channel_part = title.split(" | ")[0].strip()
+                        if channel_part: # Make sure channel_part is not empty
+                             display_source_name = f"和讯-{channel_part}"
+                    except Exception as e:
+                        print(f"  >> 警告: 尝试为和讯保险提取频道名称时出错: {e}")
+                        # display_source_name remains "和讯保险"
+                # --- END MODIFICATION ---
 
                 all_entries.append({
                     'id': entry_id,
-                    'title': title,
+                    'title': title, # Store original title for potential channel extraction later
                     'link': link,
                     'published_time_rss': published_time_rss,
                     'content_summary': content_summary,
-                    'source_name': FEED_SOURCES.get(actual_url, source_name), # 使用实际处理的URL获取名称
-                    'feed_url': actual_url # 存储实际处理的feed URL
+                    'source_name': current_source_name, # This is the name from FEED_SOURCES
+                    'display_source_name': display_source_name, # This is for OneNote page
+                    'feed_url': actual_url 
                 })
         except Exception as e:
-            print(f"  错误: 抓取 Feed '{source_name}' 时出错: {e}")
+            print(f"  错误: 抓取 Feed '{source_name_from_dict}' 时出错: {e}")
             import traceback
-            traceback.print_exc() # 打印详细错误堆栈
-            continue # 继续处理下一个feed
+            traceback.print_exc()
+            continue
         finally:
-            processed_urls_in_run.add(feed_url) # 原始URL也标记为已处理
+            processed_urls_in_run.add(feed_url)
 
     print(f"\n[RSS抓取完成] 共找到 {len(all_entries)} 条有效记录。")
-    # 按发布时间排序，如果时间无效则排在最后
     all_entries.sort(key=lambda x: x['published_time_rss'] or datetime.min, reverse=True)
     return all_entries
 
@@ -488,12 +497,12 @@ def load_processed_items(filename=PROCESSED_ITEMS_FILE):
     return processed
 
 def save_processed_items(new_ids, filename=PROCESSED_ITEMS_FILE):
-    if not new_ids: # 如果没有新ID则不操作
+    if not new_ids:
         return
     filepath = os.path.join(os.path.dirname(__file__), filename)
     try:
         with open(filepath, 'a', encoding='utf-8') as f:
-            f.writelines(f"{item_id}\n" for item_id in new_ids if item_id) # 确保 item_id 不为空
+            f.writelines(f"{item_id}\n" for item_id in new_ids if item_id)
         print(f"[状态] 已将 {len(new_ids)} 个新处理条目 ID 保存到 {filename}")
     except Exception as e:
         print(f"错误：保存已处理条目文件 {filename} 失败: {e}")
@@ -503,16 +512,15 @@ if __name__ == "__main__":
     print(f"=== RSS to OneNote Sync (Consumer Scope - Full Run) 开始于: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===")
     run_start_time = time.time()
 
-    if not CLIENT_ID: # 确保CLIENT_ID已加载
+    if not CLIENT_ID:
         exit("错误：AZURE_CLIENT_ID 未能加载。请检查 .env 文件或环境变量。")
     print("\n[环境变量验证通过]")
 
     processed_ids = load_processed_items()
-    newly_processed_ids_in_run = set() # 本次运行中新处理并成功的条目ID
+    newly_processed_ids_in_run = set()
 
     all_entries = fetch_rss_feeds()
 
-    # 筛选出未处理过的新条目
     new_entries = [entry for entry in all_entries if entry['id'] not in processed_ids]
 
     print(f"\n[筛选结果] 发现 {len(new_entries)} 条新条目。")
@@ -520,13 +528,12 @@ if __name__ == "__main__":
     if not new_entries:
         print("没有需要同步的新条目。")
     else:
-        # 限制本次运行处理的条目数量
         entries_to_process = new_entries[:MAX_ITEMS_PER_RUN]
         print(f"本次计划同步最多 {len(entries_to_process)} 条新条目。 (上限: {MAX_ITEMS_PER_RUN})")
 
         print("\n[初始化 OneNote 连接...]")
         onenote = OneNoteSync()
-        initial_token = onenote.get_token() # 尝试获取初始令牌
+        initial_token = onenote.get_token()
         if not initial_token:
             exit("错误：无法获取 OneNote 访问令牌。同步终止。")
         print("OneNote 连接初始化成功。")
@@ -537,80 +544,85 @@ if __name__ == "__main__":
         total_to_process = len(entries_to_process)
 
         for i, entry in enumerate(entries_to_process):
-            item_start_time = time.time() # 记录单个条目处理开始时间
-            print(f"\n--- 处理第 {i+1}/{total_to_process} 条: {entry['title'][:60]} ({entry['source_name']}) ---")
+            item_start_time = time.time()
+            # Use 'display_source_name' for logging if available, otherwise 'source_name'
+            log_source_name = entry.get('display_source_name', entry['source_name'])
+            print(f"\n--- 处理第 {i+1}/{total_to_process} 条: {entry['title'][:60]} ({log_source_name}) ---")
             print(f"  原始链接 (Link): {entry['link']}")
 
-            # 尝试从原文链接抓取完整内容和更精确的时间
             print("  * 正在准备页面内容和时间...")
-            VERIFY_SSL_TEMP = True # 默认开启SSL验证，可以根据需要调整
+            VERIFY_SSL_TEMP = True
+            # Pass the general source_name for get_full_content_from_link logic
             fetched_content, fetched_date = get_full_content_from_link(entry['link'], entry['source_name'], entry['feed_url'], verify_ssl=VERIFY_SSL_TEMP)
 
-            # 决定最终使用的发布时间
             final_time = fetched_date or entry.get('published_time_rss')
             time_source = "网页提取" if fetched_date else ("RSS Feed" if entry.get('published_time_rss') else "无")
             print(f"  >> 决定使用时间来源: {time_source}")
             if not final_time:
                 print("  >> 警告：最终无有效发布时间。")
+            
+            # OneNote Page Title Preparation
+            # For Hexun, if channel was extracted, the entry['title'] is still "Channel | Actual Title"
+            # We need to decide if we want to remove the channel prefix from the OneNote title
+            onenote_page_title_content = entry['title']
+            if entry['source_name'] == "和讯保险" and " | " in entry['title']:
+                try:
+                    # Use the part after " | " as the actual title for OneNote page
+                    onenote_page_title_content = entry['title'].split(" | ", 1)[1].strip()
+                except IndexError:
+                    # If split fails or no second part, use original title
+                    onenote_page_title_content = entry['title']
 
-            # 准备 OneNote 页面标题
-            original_title = entry['title']
-            # 如果有有效时间，则添加日期前缀；否则使用当前日期
+
             date_prefix = (final_time or datetime.now()).strftime('%y%m%d')
-            # 如果原始标题以数字开头，则在日期和标题间加分隔符 "-"
-            separator = "-" if original_title and original_title[0].isdigit() else ""
-            formatted_title = f"{date_prefix}{separator}{original_title}"[:200] # 限制标题长度
+            separator = "-" if onenote_page_title_content and onenote_page_title_content[0].isdigit() else ""
+            formatted_title = f"{date_prefix}{separator}{onenote_page_title_content}"[:200]
             print(f"  * 目标标题: {formatted_title}")
 
-            # 准备 OneNote 页面内容
             final_body_html = ""
             if fetched_content and isinstance(fetched_content, str) and fetched_content.startswith("[错误："):
                 print(f"  >> 获取原文内容时发生错误 ({fetched_content})，尝试使用 RSS 摘要。")
                 final_body_html = clean_extracted_html(entry['content_summary'])
-            elif fetched_content: # 如果成功获取到网页内容
-                final_body_html = fetched_content # fetched_content 已经是清理过的
-            else: # 如果网页内容获取失败或为空
+            elif fetched_content:
+                final_body_html = fetched_content
+            else:
                 print(f"  >> 获取原文内容失败或无效，尝试使用 RSS 摘要。")
                 final_body_html = clean_extracted_html(entry['content_summary'])
             
-            # 如果最终内容还是为空或错误提示
             if not final_body_html or (isinstance(final_body_html, str) and final_body_html.startswith("[错误：")):
                 print("  >> RSS 摘要内容也为空或清理失败。")
                 final_body_html = "<p><i>[无法自动提取正文，请访问原文链接查看]</i></p>"
 
-
             publish_time_str = final_time.strftime('%Y-%m-%d %H:%M:%S') if final_time else "未知"
-            escaped_link = html.escape(entry['link'] or '') #确保链接不为空
-            escaped_source_name = html.escape(entry['source_name'])
+            escaped_link = html.escape(entry['link'] or '')
+            # Use the 'display_source_name' for the OneNote page
+            escaped_display_source_name = html.escape(entry.get('display_source_name', entry['source_name']))
             
-            # 构建最终的 OneNote 页面 HTML
             onenote_content = f"""
             <h1>{html.escape(formatted_title)}</h1>
-            <p style="font-size:9pt; color:gray;">发布时间: {publish_time_str} | 来源: {escaped_source_name} | <a href="{escaped_link}">原文链接</a></p>
+            <p style="font-size:9pt; color:gray;">发布时间: {publish_time_str} | 来源: {escaped_display_source_name} | <a href="{escaped_link}">原文链接</a></p>
             <hr/>
             <div>
                 {final_body_html}
             </div>
             """
 
-            # 创建 OneNote 页面
             creation_success = onenote.create_onenote_page_in_app_notebook(title=formatted_title, content_html=onenote_content)
 
-            current_entry_id = entry['id'] # 获取当前处理条目的ID
+            current_entry_id = entry['id']
             if creation_success:
                 success_count += 1
-                newly_processed_ids_in_run.add(current_entry_id) # 记录已成功处理的ID
+                newly_processed_ids_in_run.add(current_entry_id)
                 print(f"  >> 处理成功 (耗时: {time.time() - item_start_time:.2f} 秒)")
             else:
                 fail_count += 1
                 print(f"  !! 处理失败: {entry['title'][:60]}")
 
-            # 在处理每个条目后暂停，避免请求过于频繁
             time.sleep(REQUEST_DELAY)
 
         print(f"\n[同步统计] 本次成功 {success_count} 条，失败 {fail_count} 条。")
-        if newly_processed_ids_in_run: # 如果有新处理的条目
-            save_processed_items(newly_processed_ids_in_run) # 保存这些ID
+        if newly_processed_ids_in_run:
+            save_processed_items(newly_processed_ids_in_run)
 
     run_end_time = time.time()
     print(f"\n=== 同步完成于: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (总耗时: {run_end_time - run_start_time:.2f} 秒) ===")
