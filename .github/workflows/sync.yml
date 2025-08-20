@@ -9,9 +9,14 @@ on:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    
+    # 关键修改 1: 授予工作流程写入仓库的权限
+    permissions:
+      contents: write
+
     steps:
       # 第1步：检出你的代码仓库
-      - name: Checkout Repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
       # 第2步：设置 Python 环境
@@ -33,14 +38,18 @@ jobs:
           CI: true # 告诉脚本这是在自动化环境中运行
         run: python rss_to_onenote.py
 
-      # 第5步：将更新后的状态文件提交并推送回仓库
+      # 关键修改 2: 新增步骤，将更新后的状态文件提交并推送回仓库
       - name: Commit and Push State Files
         run: |
+          # 配置 git 用户信息
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          # 添加 token_cache.bin 和 processed_items.txt 文件，如果它们存在的话
+          
+          # 添加 token_cache.bin 和 processed_items.txt 文件
+          # || echo ... 的作用是如果文件不存在也不报错
           git add token_cache.bin processed_items.txt || echo "No state files to add."
-          # 检查是否有文件变动需要提交
+          
+          # 检查是否有文件变动需要提交，如果没有变动就不执行 commit 和 push
           if git diff-index --quiet HEAD; then
             echo "No changes in state files to commit."
           else
