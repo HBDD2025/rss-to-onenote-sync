@@ -24,6 +24,8 @@ warnings.simplefilter('ignore', InsecureRequestWarning)
 env_path = os.path.join(os.path.dirname(__file__), '.env')
 load_dotenv(env_path)
 CLIENT_ID = os.getenv("AZURE_CLIENT_ID")
+# 新增：从环境变量读取 OneNote 分区名称
+ONENOTE_SECTION_NAME = os.getenv("ONENOTE_SECTION_NAME")
 AUTHORITY = "https://login.microsoftonline.com/consumers"
 SCOPES = ["Notes.ReadWrite.CreatedByApp"]
 TOKEN_CACHE_FILE = "token_cache.bin"
@@ -32,7 +34,7 @@ MAX_ITEMS_PER_RUN = 50
 REQUEST_TIMEOUT = 25
 REQUEST_DELAY = 3
 
-# --- RSS 源列表 ---
+# (RSS源列表和映射保持不变, 此处省略)
 ORIGINAL_FEEDS = [
     "http://www.jintiankansha.me/rss/GIZDGNRVGJ6GIZRWGRRGMYZUGIYTOOBUMEYDSZTDMJQTEOJXHAZTGOBVGJRDMZJWMFSDSZJRHE3A====",
     "http://www.jintiankansha.me/rss/GEYDQMJQHF6DQOJRMZTDIZTGHAYDMZJSMYYWMOBUGM3GEZTGMQ2DIMBRHA3GGNLEGFSDENDEMEYQ====",
@@ -75,7 +77,6 @@ FEED_SOURCES = {
     "http://www.jintiankansha.me/rss/GEYTGOBYPQZDKNDGMQZDQMRWGA2TQZRRGU2DGMTEG4ZWMMRXME3TSODBGFSTENRQGBT": "中金点睛",
     "http://www.jintiankansha.me/rss/GMZTONZRHF6DQZJSMY4GIMJQG5TGMZBWHA4WIMJWGUYTKNBYG5QTKYJVMQYGINJYGAYDEODEGFTA====": "保煎烩",
 }
-# (后面的代码与之前版本相同，但包含了关键的错误修正)
 class OneNoteSync:
     def __init__(self):
         self.cache_file_path = os.path.abspath(os.path.join(os.path.dirname(__file__), TOKEN_CACHE_FILE))
@@ -145,7 +146,16 @@ class OneNoteSync:
             print(f"[API 调用未知错误] {e}")
             return None
     def create_onenote_page_in_app_notebook(self, title, content_html):
-        url = "https://graph.microsoft.com/v1.0/me/onenote/pages"
+        # #################################################
+        # 关键修改：根据环境变量决定保存到哪个分区
+        # #################################################
+        if ONENOTE_SECTION_NAME:
+            url = f"https://graph.microsoft.com/v1.0/me/onenote/pages?sectionName={ONENOTE_SECTION_NAME}"
+            print(f"[OneNote] 将尝试保存到指定分区: {ONENOTE_SECTION_NAME}")
+        else:
+            url = "https://graph.microsoft.com/v1.0/me/onenote/pages"
+            print("[OneNote] 未指定分区，将保存到默认位置。")
+
         headers = {"Content-Type": "application/xhtml+xml"}
         safe_title = html.escape(title)
         creation_time_str = time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime())
@@ -193,7 +203,7 @@ def get_full_content_from_link(url, feed_url):
             src = img.get('src') or img.get('data-src')
             if src and not src.startswith(('http', 'data:')):
                 img['src'] = urljoin(final_url, src)
-        return str(article_body), None # Date extraction removed for simplicity
+        return str(article_body), None
     except Exception:
         return None, None
 def fetch_rss_feeds():
@@ -225,7 +235,6 @@ def save_processed_items(new_ids, filename=PROCESSED_ITEMS_FILE):
     filepath = os.path.join(os.path.dirname(__file__), filename)
     with open(filepath, 'a', encoding='utf-8') as f:
         f.writelines(f"{item_id}\n" for item_id in new_ids)
-
 if __name__ == "__main__":
     print(f"=== RSS to OneNote Sync 开始于: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===")
     if not CLIENT_ID:
@@ -253,7 +262,6 @@ if __name__ == "__main__":
             full_content, _ = get_full_content_from_link(entry['link'], entry['feed_url'])
             final_body_html = clean_extracted_html(full_content or entry['content_summary'])
             
-            # 修正 'entry.link' -> 'entry['link']'
             onenote_content = f"""
                 <h1>{html.escape(formatted_title)}</h1>
                 <p style="font-size:9pt; color:gray;">
