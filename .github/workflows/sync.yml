@@ -27,13 +27,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # #################################################
-      # 关键修改：在这里添加了 -u 参数
-      # #################################################
       - name: Run Python Script to Sync RSS
         env:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          CI: true # 告诉脚本这是在自动化环境中运行
+          # #################################################
+          # 关键修正：在这里添加您的 OneNote 分区密钥
+          # #################################################
+          ONENOTE_SECTION_NAME: ${{ secrets.ONENOTE_SECTION_NAME }}
+          CI: true
         run: python -u rss_to_onenote.py
 
       - name: Commit and Push State Files
