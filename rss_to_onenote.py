@@ -13,7 +13,8 @@ import html
 from datetime import datetime
 import re
 import warnings
-from urllib.parse import urljoin
+# 引入 urlencode 的 quote 函数
+from urllib.parse import urljoin, quote
 import sys
 
 # 忽略 InsecureRequestWarning 警告
@@ -24,7 +25,6 @@ warnings.simplefilter('ignore', InsecureRequestWarning)
 env_path = os.path.join(os.path.dirname(__file__), '.env')
 load_dotenv(env_path)
 CLIENT_ID = os.getenv("AZURE_CLIENT_ID")
-# 新增：从环境变量读取 OneNote 分区名称
 ONENOTE_SECTION_NAME = os.getenv("ONENOTE_SECTION_NAME")
 AUTHORITY = "https://login.microsoftonline.com/consumers"
 SCOPES = ["Notes.ReadWrite.CreatedByApp"]
@@ -146,12 +146,11 @@ class OneNoteSync:
             print(f"[API 调用未知错误] {e}")
             return None
     def create_onenote_page_in_app_notebook(self, title, content_html):
-        # #################################################
-        # 关键修改：根据环境变量决定保存到哪个分区
-        # #################################################
         if ONENOTE_SECTION_NAME:
-            url = f"https://graph.microsoft.com/v1.0/me/onenote/pages?sectionName={ONENOTE_SECTION_NAME}"
-            print(f"[OneNote] 将尝试保存到指定分区: {ONENOTE_SECTION_NAME}")
+            section = ONENOTE_SECTION_NAME.strip()
+            # 使用 quote 函数对分区名进行编码
+            url = f"https://graph.microsoft.com/v1.0/me/onenote/pages?sectionName={quote(section, safe='')}"
+            print(f"[OneNote] 将尝试保存到指定分区: {section}")
         else:
             url = "https://graph.microsoft.com/v1.0/me/onenote/pages"
             print("[OneNote] 未指定分区，将保存到默认位置。")
