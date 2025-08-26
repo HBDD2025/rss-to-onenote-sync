@@ -7,5 +7,5 @@ venv/
 .venv/
 .DS_Store
 *.log
-# token_cache.bin 
-# processed_items.txt 
+token_cache.bin
+processed_items.txt
