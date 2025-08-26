@@ -2,8 +2,13 @@ name: RSS to OneNote Sync
 
 on:
   schedule:
-    - cron: '0 * * * *'
-  workflow_dispatch:
+    - cron: '0 * * * *'   # 每小时第 0 分运行
+  workflow_dispatch:       # 允许手动触发
+
+# 防止并发运行互相覆盖状态文件
+concurrency:
+  group: rss-to-onenote-sync-state
+  cancel-in-progress: true
 
 jobs:
   sync:
@@ -12,11 +17,10 @@ jobs:
       contents: write
 
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0            # 关键：拉全历史，便于后面 pull --rebase
-          persist-credentials: true
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -35,39 +39,38 @@ jobs:
           CI: true
         run: python -u rss_to_onenote.py
 
+      # 用你的 STATE_KEY 把状态文件加密
       - name: Encrypt state files
         if: always()
-        env:
-          STATE_KEY: ${{ secrets.STATE_KEY }}
         run: |
           set -e
           if [ -f token_cache.bin ]; then
-            openssl enc -aes-256-cbc -md sha256 -salt -pbkdf2 -pass pass:"$STATE_KEY" \
-              -in token_cache.bin -out token_cache.bin.enc && rm -f token_cache.bin
+            openssl enc -aes-256-cbc -pbkdf2 -salt \
+              -in token_cache.bin -out token_cache.enc \
+              -pass pass:"${{ secrets.STATE_KEY }}"
           fi
           if [ -f processed_items.txt ]; then
-            openssl enc -aes-256-cbc -md sha256 -salt -pbkdf2 -pass pass:"$STATE_KEY" \
-              -in processed_items.txt -out processed_items.txt.enc && rm -f processed_items.txt
+            openssl enc -aes-256-cbc -pbkdf2 -salt \
+              -in processed_items.txt -out processed_items.enc \
+              -pass pass:"${{ secrets.STATE_KEY }}"
           fi
 
-      - name: Commit and Push encrypted state files
+      - name: Commit and Push encrypted state
         if: always()
         run: |
           set -e
           git config --global user.name  'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
 
-          # 关键：确保与远端 main 同步，避免 “fetch first”
-          git fetch origin main
-          git checkout main
-          git pull --rebase origin main
+          # 只添加加密后的文件
+          git add token_cache.enc processed_items.enc 2>/dev/null || true
 
-          # 仅当有变化时才提交
-          git add token_cache.bin.enc processed_items.txt.enc 2>/dev/null || true
           if git diff --cached --quiet; then
-            echo "No encrypted state changes."
+            echo "No encrypted state changes to commit."
             exit 0
           fi
 
           git commit -m "Update encrypted state files"
+          # 关键：先 rebase 把远端最新提交并入，再推送
+          git pull --rebase origin main
           git push origin HEAD:main
