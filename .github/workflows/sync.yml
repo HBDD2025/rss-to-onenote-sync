@@ -2,25 +2,19 @@ name: RSS to OneNote Sync
 
 on:
   schedule:
-    - cron: '0 * * * *'   # 每小时第 0 分运行
-  workflow_dispatch:       # 允许手动触发
-
-# 防止并发运行互相覆盖状态文件
-concurrency:
-  group: rss-to-onenote-sync-state
-  cancel-in-progress: true
+    - cron: '0 * * * *'   # 每小时
+  workflow_dispatch:
 
 jobs:
   sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write
 
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -32,45 +26,51 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      # 运行前：解密还原状态文件（如果存在）
+      - name: Restore state (decrypt if present)
+        env:
+          STATE_KEY: ${{ secrets.STATE_KEY }}
+        run: |
+          set -e
+          if [ -f token_cache.enc ]; then
+            openssl enc -d -aes-256-cbc -pbkdf2 -in token_cache.enc -out token_cache.bin -pass pass:"$STATE_KEY" || true
+          fi
+          if [ -f processed_items.enc ]; then
+            openssl enc -d -aes-256-cbc -pbkdf2 -in processed_items.enc -out processed_items.txt -pass pass:"$STATE_KEY" || true
+          fi
+
       - name: Run Python Script to Sync RSS
+        timeout-minutes: 30
         env:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ONENOTE_SECTION_NAME: ${{ secrets.ONENOTE_SECTION_NAME }}
+          ONENOTE_SECTION_NAME: ${{ secrets.ONENOTE_SECTION_NAME }}   # 例如：RSS syn2
+          SECTION_MONTHLY: true                                       # 默认 true：按月分卷
           CI: true
         run: python -u rss_to_onenote.py
 
-      # 用你的 STATE_KEY 把状态文件加密
-      - name: Encrypt state files
+      # 运行后：加密并提交状态（即使上一步失败也执行）
+      - name: Encrypt and commit state
         if: always()
+        env:
+          STATE_KEY: ${{ secrets.STATE_KEY }}
         run: |
           set -e
           if [ -f token_cache.bin ]; then
-            openssl enc -aes-256-cbc -pbkdf2 -salt \
-              -in token_cache.bin -out token_cache.enc \
-              -pass pass:"${{ secrets.STATE_KEY }}"
+            openssl enc -aes-256-cbc -pbkdf2 -salt -in token_cache.bin -out token_cache.enc -pass pass:"$STATE_KEY"
+            rm -f token_cache.bin
           fi
           if [ -f processed_items.txt ]; then
-            openssl enc -aes-256-cbc -pbkdf2 -salt \
-              -in processed_items.txt -out processed_items.enc \
-              -pass pass:"${{ secrets.STATE_KEY }}"
+            openssl enc -aes-256-cbc -pbkdf2 -salt -in processed_items.txt -out processed_items.enc -pass pass:"$STATE_KEY"
+            rm -f processed_items.txt
           fi
 
-      - name: Commit and Push encrypted state
-        if: always()
-        run: |
-          set -e
-          git config --global user.name  'github-actions[bot]'
+          git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-
-          # 只添加加密后的文件
           git add token_cache.enc processed_items.enc 2>/dev/null || true
-
           if git diff --cached --quiet; then
             echo "No encrypted state changes to commit."
-            exit 0
+          else
+            git commit -m "Update encrypted state files"
+            git pull --rebase origin main
+            git push origin HEAD:main
           fi
-
-          git commit -m "Update encrypted state files"
-          # 关键：先 rebase 把远端最新提交并入，再推送
-          git pull --rebase origin main
-          git push origin HEAD:main
