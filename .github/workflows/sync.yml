@@ -2,19 +2,25 @@ name: RSS to OneNote Sync
 
 on:
   schedule:
-    - cron: '0 * * * *'   # 每小时
+    - cron: '0 * * * *'   # 每小时第 0 分运行
   workflow_dispatch:
+
+# 防并发：同名工作流只保留最后一次
+concurrency:
+  group: rss-to-onenote-sync
+  cancel-in-progress: true
 
 jobs:
   sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
     permissions:
       contents: write
 
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0     # 为 rebase 提供完整历史
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -26,10 +32,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # 运行前：解密还原状态文件（如果存在）
-      - name: Restore state (decrypt if present)
+      # 解密历史状态文件（若存在）
+      - name: Decrypt state files (if present)
         env:
           STATE_KEY: ${{ secrets.STATE_KEY }}
+        shell: bash
         run: |
           set -e
           if [ -f token_cache.enc ]; then
@@ -40,19 +47,17 @@ jobs:
           fi
 
       - name: Run Python Script to Sync RSS
-        timeout-minutes: 30
         env:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ONENOTE_SECTION_NAME: ${{ secrets.ONENOTE_SECTION_NAME }}   # 例如：RSS syn2
-          SECTION_MONTHLY: true                                       # 默认 true：按月分卷
+          ONENOTE_SECTION_NAME: ${{ secrets.ONENOTE_SECTION_NAME }}
+          SECTION_MONTHLY: "true"    # 开启“按月自动分区”：<基础分区名> · YYYY-MM
           CI: true
         run: python -u rss_to_onenote.py
 
-      # 运行后：加密并提交状态（即使上一步失败也执行）
-      - name: Encrypt and commit state
-        if: always()
+      - name: Encrypt state files
         env:
           STATE_KEY: ${{ secrets.STATE_KEY }}
+        shell: bash
         run: |
           set -e
           if [ -f token_cache.bin ]; then
@@ -64,13 +69,19 @@ jobs:
             rm -f processed_items.txt
           fi
 
+      - name: Commit and Push encrypted state
+        shell: bash
+        run: |
+          set -e
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add token_cache.enc processed_items.enc 2>/dev/null || true
-          if git diff --cached --quiet; then
-            echo "No encrypted state changes to commit."
-          else
-            git commit -m "Update encrypted state files"
-            git pull --rebase origin main
-            git push origin HEAD:main
-          fi
+
+          git add token_cache.enc processed_items.enc || true
+          git commit -m "Update encrypted state files" || echo "No changes to commit."
+
+          # 关键：推送前先拉取并 rebase，解决“fetch first”
+          git fetch origin main
+          git pull --rebase --autostash origin main || true
+
+          # 推回 main
+          git push origin HEAD:main
