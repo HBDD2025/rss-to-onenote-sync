@@ -1,35 +1,8 @@
-# —— 环境与本地依赖 ——
-.env
-.venv/
-venv/
-env/
-
-# —— Python 编译/缓存产物 ——
-__pycache__/
-*.py[cod]
-*.so
-*.pyd
-*.pyo
-
-# —— 测试/工具缓存 ——
-.pytest_cache/
-.mypy_cache/
-.coverage
-htmlcov/
-.cache/
-
-# —— 编辑器/系统文件 ——
-.DS_Store
-Thumbs.db
-.idea/
-.vscode/
-*.log
-
-# —— 令牌缓存（明文/未加密）——
-# 只忽略未加密的 token；加密后的 token_cache.enc 需要提交
+# 明文状态文件（禁止入库）
 token_cache.bin
+processed_items.txt
 
-# ❗重要说明：
-# 以下文件需要被提交，千万不要写进 .gitignore：
-# - processed_items.txt  （记录已处理的 RSS）
-# - token_cache.enc      （工作流生成的加密令牌）
+# Python 常规
+__pycache__/
+*.pyc
+.env
