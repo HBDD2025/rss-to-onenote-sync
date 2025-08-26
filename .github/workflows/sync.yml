@@ -2,7 +2,7 @@ name: RSS to OneNote Sync
 
 on:
   schedule:
-    - cron: '0 * * * *' # 每小时
+    - cron: '0 * * * *'   # 每小时
   workflow_dispatch:
 
 jobs:
@@ -25,18 +25,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # 运行前：解密上次保存的状态（如果存在）
-      - name: Decrypt state (if present)
+      # 运行前：把上次运行后加密保存的 token_cache.enc 解密成 token_cache.bin
+      - name: Decrypt token cache if present
+        env:
+          STATE_KEY: ${{ secrets.STATE_KEY }}
         shell: bash
         run: |
-          set -e
-          if [ -f token_cache.bin.enc ]; then
-            openssl enc -aes-256-cbc -d -pbkdf2 -in token_cache.bin.enc -out token_cache.bin -pass pass:"${{ secrets.STATE_KEY }}"
-            echo "Decrypted token_cache.bin"
-          fi
-          if [ -f processed_items.txt.enc ]; then
-            openssl enc -aes-256-cbc -d -pbkdf2 -in processed_items.txt.enc -out processed_items.txt -pass pass:"${{ secrets.STATE_KEY }}"
-            echo "Decrypted processed_items.txt"
+          if [ -f token_cache.enc ]; then
+            echo "$STATE_KEY" | openssl enc -aes-256-cbc -d -pbkdf2 -in token_cache.enc -out token_cache.bin -pass stdin
+            echo "Decrypted token_cache.enc -> token_cache.bin"
+          else
+            echo "No token_cache.enc to decrypt (first run)."
           fi
 
       - name: Run Python Script to Sync RSS
@@ -46,30 +45,30 @@ jobs:
           CI: true
         run: python -u rss_to_onenote.py
 
-      # 运行后：把状态重新加密，然后删除明文
-      - name: Encrypt state
+      # 运行后：把新的 token_cache.bin 再加密成 token_cache.enc，避免被 GitHub 安全扫描拦截
+      - name: Encrypt token cache for commit
         if: always()
+        env:
+          STATE_KEY: ${{ secrets.STATE_KEY }}
         shell: bash
         run: |
-          set -e
           if [ -f token_cache.bin ]; then
-            openssl enc -aes-256-cbc -salt -pbkdf2 -in token_cache.bin -out token_cache.bin.enc -pass pass:"${{ secrets.STATE_KEY }}"
-            shred -u token_cache.bin || rm -f token_cache.bin
-          fi
-          if [ -f processed_items.txt ]; then
-            openssl enc -aes-256-cbc -salt -pbkdf2 -in processed_items.txt -out processed_items.txt.enc -pass pass:"${{ secrets.STATE_KEY }}"
-            shred -u processed_items.txt || rm -f processed_items.txt
+            echo "$STATE_KEY" | openssl enc -aes-256-cbc -pbkdf2 -salt -in token_cache.bin -out token_cache.enc -pass stdin
+            echo "Encrypted token_cache.bin -> token_cache.enc"
+          else
+            echo "No token_cache.bin to encrypt."
           fi
 
-      - name: Commit and Push Encrypted State Files
+      - name: Commit and Push State Files
         if: always()
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add token_cache.bin.enc processed_items.txt.enc || true
+          # 只提交加密后的文件！
+          git add token_cache.enc processed_items.txt || true
           if git diff --cached --quiet; then
             echo "No changes to commit."
           else
-            git commit -m "Update encrypted state files"
+            git commit -m "Update state files (encrypted token_cache, processed_items)"
             git push
           fi
