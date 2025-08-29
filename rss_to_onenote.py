@@ -44,7 +44,7 @@ SCOPES = ["Notes.ReadWrite.CreatedByApp"]
 
 TOKEN_CACHE_FILE = "token_cache.bin"         # 工作流会把它加密为 *.enc 再提交
 PROCESSED_ITEMS_FILE = "processed_items.txt" # 同上
-MAX_ITEMS_PER_RUN = 50
+MAX_ITEMS_PER_RUN = 2
 REQUEST_TIMEOUT = 25
 REQUEST_DELAY = 3
 
