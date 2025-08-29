@@ -1,14 +1,10 @@
-# Python & env
-.env
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-venv/
-.venv/
-.DS_Store
-*.log
-
-# 只忽略“明文状态文件”，不忽略加密后的 .enc
+# 运行态的明文缓存（永远不要提交）
 token_cache.bin
 processed_items.txt
+
+# 常见杂项
+__pycache__/
+*.pyc
+.env
+.vscode/
+.DS_Store
