@@ -26,7 +26,7 @@ ONENOTE_SECTION_NAME = os.getenv("ONENOTE_SECTION_NAME", "").strip()
 SECTION_MONTHLY = os.getenv("SECTION_MONTHLY", "false").lower() == "true"
 
 # 关键：加入 offline_access，让刷新令牌可复用
-SCOPES = ["Notes.ReadWrite.CreatedByApp", "offline_access"]
+SCOPES = ["Notes.ReadWrite.CreatedByApp"]
 AUTHORITY = "https://login.microsoftonline.com/consumers"
 
 # 状态文件（明文，只在 runner 上用；仓库里是 .enc）
