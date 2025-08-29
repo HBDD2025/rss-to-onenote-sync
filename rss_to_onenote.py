@@ -28,7 +28,7 @@ AUTHORITY = "https://login.microsoftonline.com/consumers"
 SCOPES = ["Notes.ReadWrite.CreatedByApp"]
 TOKEN_CACHE_FILE = "token_cache.bin"
 PROCESSED_ITEMS_FILE = "processed_items.txt"
-MAX_ITEMS_PER_RUN = 50
+MAX_ITEMS_PER_RUN = 2
 REQUEST_TIMEOUT = 30 # 稍微延长超时时间
 REQUEST_DELAY = 2
 
