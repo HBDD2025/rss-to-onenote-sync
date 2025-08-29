@@ -2,93 +2,82 @@ name: RSS to OneNote Sync
 
 on:
   schedule:
-    - cron: '0 * * * *'   # 每小时整点
-  workflow_dispatch:       # 支持手动按钮
+    - cron: '0 * * * *'   # 每小时
+  workflow_dispatch: {}
 
-# 关键1：禁止并发（手动与定时不会撞车）
 concurrency:
   group: rss-sync
-  cancel-in-progress: true
-
-permissions:
-  contents: write
+  cancel-in-progress: false
 
 jobs:
   sync:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      # 关键2：运行前解密缓存（若存在）
-      - name: Decrypt state (if present)
+      # ---------- 解密状态文件 ----------
+      - name: Decrypt state files (if any)
         env:
           STATE_KEY: ${{ secrets.STATE_KEY }}
         run: |
           set -e
           if [ -f token_cache.enc ]; then
-            openssl enc -d -aes-256-cbc -pbkdf2 -in token_cache.enc -out token_cache.bin -pass pass:"$STATE_KEY" || true
+            openssl enc -aes-256-cbc -pbkdf2 -d -salt -pass env:STATE_KEY -in token_cache.enc -out token_cache.bin
+            echo "Decrypted token_cache.enc -> token_cache.bin"
           fi
           if [ -f processed_items.enc ]; then
-            openssl enc -d -aes-256-cbc -pbkdf2 -in processed_items.enc -out processed_items.txt -pass pass:"$STATE_KEY" || true
+            openssl enc -aes-256-cbc -pbkdf2 -d -salt -pass env:STATE_KEY -in processed_items.enc -out processed_items.txt
+            echo "Decrypted processed_items.enc -> processed_items.txt"
           fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
       - name: Run sync
         env:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ONENOTE_SECTION_NAME: ${{ secrets.ONENOTE_SECTION_NAME }}
-          SECTION_MONTHLY: ${{ vars.SECTION_MONTHLY }}
+          MAX_ITEMS_PER_RUN: 2         # 你现在想一次2条
           CI: true
         run: python -u rss_to_onenote.py
 
-      # 运行后重新加密
-      - name: Encrypt state
+      # ---------- 加密并推回 ----------
+      - name: Encrypt state files
         env:
           STATE_KEY: ${{ secrets.STATE_KEY }}
         run: |
           set -e
           if [ -f token_cache.bin ]; then
-            openssl enc -aes-256-cbc -pbkdf2 -in token_cache.bin -out token_cache.enc -pass pass:"$STATE_KEY"
+            openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:STATE_KEY -in token_cache.bin -out token_cache.enc
             rm -f token_cache.bin
+            echo "Encrypted token_cache.bin -> token_cache.enc"
           fi
           if [ -f processed_items.txt ]; then
-            openssl enc -aes-256-cbc -pbkdf2 -in processed_items.txt -out processed_items.enc -pass pass:"$STATE_KEY"
+            openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:STATE_KEY -in processed_items.txt -out processed_items.enc
             rm -f processed_items.txt
+            echo "Encrypted processed_items.txt -> processed_items.enc"
           fi
 
-      # 关键3：推送前先fetch/pull --rebase；必要时再 --force-with-lease
-      - name: Commit & push encrypted state (rebase-safe)
+      - name: Commit and Push encrypted state
         run: |
-          set -e
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
-          git fetch origin main
-          git checkout main
-
-          git add -A
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git pull --rebase --autostash
+          git add token_cache.enc processed_items.enc || true
           if git diff --cached --quiet; then
-            echo "Nothing to commit."
-            exit 0
+            echo "No encrypted state changes."
+          else
+            git commit -m "Update encrypted state files"
+            git push
           fi
-
-          git commit -m "Update encrypted state files"
-
-          if git push origin HEAD:main; then
-            exit 0
-          fi
-
-          echo "Non-fast-forward; rebasing..."
-          git pull --rebase origin main || true
-          git push origin HEAD:main || git push --force-with-lease origin HEAD:main
