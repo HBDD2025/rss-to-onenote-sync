@@ -2,66 +2,77 @@ name: RSS to OneNote Sync
 
 on:
   schedule:
-    - cron: '0 * * * *'
-  workflow_dispatch:
+    - cron: '0 2,6,10,18 * * *'  # 北京时间 10:00, 14:00, 18:00, 2:00 (次日)；基于 UTC 时间
+  workflow_dispatch:  # 支持手动触发
 
-# 防止并发运行，避免状态文件冲突
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: rss-to-onenote-state
+  cancel-in-progress: false  # 防止并发覆盖状态文件
 
 jobs:
   sync:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # 为 rebase 提供完整历史
+          fetch-depth: 0  # 获取完整历史，用于 Git 操作
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
 
-      # 运行前：解密上次保存的状态文件
-      - name: Decrypt state files (if present)
-        env:
-          STATE_KEY: ${{ secrets.STATE_KEY }}
+      - name: Decrypt state files (if any)
         run: |
-          set -e
           if [ -f token_cache.enc ]; then
-            openssl enc -d -aes-256-cbc -pbkdf2 -in token_cache.enc -out token_cache.bin -pass pass:"$STATE_KEY" || echo "token_cache.enc decryption failed or file is empty."
-          else
-            echo "token_cache.enc not found, will require login."
+            openssl enc -aes-256-cbc -pbkdf2 -d -in token_cache.enc -out token_cache.bin -pass pass:"$STATE_KEY"
           fi
           if [ -f processed_items.enc ]; then
-            openssl enc -d -aes-256-cbc -pbkdf2 -in processed_items.enc -out processed_items.txt -pass pass:"$STATE_KEY" || echo "processed_items.enc decryption failed or file is empty."
+            openssl enc -aes-256-cbc -pbkdf2 -d -in processed_items.enc -out processed_items.txt -pass pass:"$STATE_KEY"
           fi
-      
-      - name: Run Python Script to Sync RSS
+        shell: bash
+        env:
+          STATE_KEY: ${{ secrets.STATE_KEY }}
+
+      - name: Sanity check token cache
+        run: |
+          if [ -f token_cache.enc ]; then
+            echo "[check] token_cache.enc size:" $(wc -c < token_cache.enc)
+          else
+            echo "[check] token_cache.enc NOT found"
+          fi
+          if [ -f token_cache.bin ]; then
+            echo "[check] token_cache.bin size:" $(wc -c < token_cache.bin)
+            python - <<'PY'
+          import json, msal
+          from msal_extensions import FilePersistence, PersistedTokenCache
+          p = FilePersistence("token_cache.bin")
+          cache = PersistedTokenCache(p); cache.reload()
+          app = msal.PublicClientApplication("dummy", token_cache=cache, authority="https://login.microsoftonline.com/consumers")
+          accts = app.get_accounts()
+          print("[check] accounts in cache:", [a.get("username") for a in accts])
+          print("[check] raw_cache_size:", len(cache.serialize()))
+          PY
+          else
+            echo "[check] token_cache.bin NOT found after decrypt"
+          fi
+        shell: bash
+
+      - name: Run sync
+        run: python rss_to_onenote.py
         env:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ONENOTE_SECTION_NAME: ${{ secrets.ONENOTE_SECTION_NAME }}
-          CI: true
-        run: python -u rss_to_onenote.py
+          # 可选：如果需要覆盖默认 MAX_ITEMS_PER_RUN
+          # MAX_ITEMS_PER_RUN: 50
 
-      # 运行后：将新生成的状态文件加密并提交
-      - name: Encrypt and Commit State Files
-        if: always()
-        env:
-          STATE_KEY: ${{ secrets.STATE_KEY }}
+      - name: Encrypt & Push encrypted state files
         run: |
           set -e
-          
+
           # 加密文件
           if [ -f token_cache.bin ]; then
             openssl enc -aes-256-cbc -pbkdf2 -salt -in token_cache.bin -out token_cache.enc -pass pass:"$STATE_KEY"
@@ -71,18 +82,25 @@ jobs:
             openssl enc -aes-256-cbc -pbkdf2 -salt -in processed_items.txt -out processed_items.enc -pass pass:"$STATE_KEY"
             rm -f processed_items.txt
           fi
-          
+
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          
+
           git add token_cache.enc processed_items.enc || true
-          
+
           if git diff-index --quiet HEAD; then
             echo "No changes in state files to commit."
             exit 0
           fi
-          
-          # 提交前先同步远程更改，解决冲突
+
+          # 先提交更改（如果有），清空暂存区
+          git commit -m "Update encrypted state files" || true  # || true 以防无更改
+
+          # 现在 pull --rebase（暂存区已干净）
           git pull --rebase origin main
-          git commit -m "Update encrypted state files"
+
+          # 推送更新（rebase 后可能有新历史）
           git push origin main
+        shell: bash
+        env:
+          STATE_KEY: ${{ secrets.STATE_KEY }}
