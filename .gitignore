@@ -1,10 +1,13 @@
-# 运行态的明文缓存（永远不要提交）
-token_cache.bin
-processed_items.txt
-
-# 常见杂项
+.env
 __pycache__/
 *.pyc
-.env
-.vscode/
+*.pyo
+*.pyd
+venv/
+.venv/
 .DS_Store
+*.log
+
+# 明文状态文件仅在 runner 使用
+token_cache.bin
+processed_items.txt
