@@ -1,83 +1,84 @@
-name: RSS to OneNote Sync
+name: sync
 
 on:
+  workflow_dispatch:
   schedule:
-    - cron: '0 * * * *'   # 每小时
-  workflow_dispatch: {}
+    - cron: "0 * * * *"   # 每小时跑一次，你可以改成自己想要的频率
 
 concurrency:
-  group: rss-sync
+  group: rss-to-onenote-state
   cancel-in-progress: false
 
 jobs:
   sync:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
-      # ---------- 解密状态文件 ----------
       - name: Decrypt state files (if any)
-        env:
-          STATE_KEY: ${{ secrets.STATE_KEY }}
         run: |
-          set -e
           if [ -f token_cache.enc ]; then
-            openssl enc -aes-256-cbc -pbkdf2 -d -salt -pass env:STATE_KEY -in token_cache.enc -out token_cache.bin
-            echo "Decrypted token_cache.enc -> token_cache.bin"
+            openssl enc -d -aes-256-cbc -pbkdf2 -in token_cache.enc -out token_cache.bin -k "${{ secrets.STATE_KEY }}"
           fi
           if [ -f processed_items.enc ]; then
-            openssl enc -aes-256-cbc -pbkdf2 -d -salt -pass env:STATE_KEY -in processed_items.enc -out processed_items.txt
-            echo "Decrypted processed_items.enc -> processed_items.txt"
+            openssl enc -d -aes-256-cbc -pbkdf2 -in processed_items.enc -out processed_items.txt -k "${{ secrets.STATE_KEY }}"
           fi
 
+      - name: Sanity check token cache
+        run: |
+          if [ -f token_cache.enc ]; then
+            echo "[check] token_cache.enc size:" $(wc -c < token_cache.enc)
+          else
+            echo "[check] token_cache.enc NOT found"
+          fi
+
+          if [ -f token_cache.bin ]; then
+            echo "[check] token_cache.bin size:" $(wc -c < token_cache.bin)
+            python - <<'PY'
+import msal
+from msal_extensions import FilePersistence, PersistedTokenCache
+p = FilePersistence("token_cache.bin")
+cache = PersistedTokenCache(p); cache.reload()
+app = msal.PublicClientApplication("dummy", token_cache=cache, authority="https://login.microsoftonline.com/consumers")
+accts = app.get_accounts()
+print("[check] accounts in cache:", [a.get("username") for a in accts])
+print("[check] raw_cache_size:", len(cache.serialize()))
+PY
+          else
+            echo "[check] token_cache.bin NOT found after decrypt"
+          fi
+        shell: bash
+
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: "3.10"
 
       - name: Install deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+        run: pip install -r requirements.txt
 
       - name: Run sync
+        run: python -u rss_to_onenote.py
         env:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ONENOTE_SECTION_NAME: ${{ secrets.ONENOTE_SECTION_NAME }}
-          MAX_ITEMS_PER_RUN: 2         # 你现在想一次2条
-          CI: true
-        run: python -u rss_to_onenote.py
 
-      # ---------- 加密并推回 ----------
       - name: Encrypt state files
-        env:
-          STATE_KEY: ${{ secrets.STATE_KEY }}
         run: |
-          set -e
           if [ -f token_cache.bin ]; then
-            openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:STATE_KEY -in token_cache.bin -out token_cache.enc
-            rm -f token_cache.bin
-            echo "Encrypted token_cache.bin -> token_cache.enc"
+            openssl enc -aes-256-cbc -pbkdf2 -in token_cache.bin -out token_cache.enc -k "${{ secrets.STATE_KEY }}"
           fi
           if [ -f processed_items.txt ]; then
-            openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:STATE_KEY -in processed_items.txt -out processed_items.enc
-            rm -f processed_items.txt
-            echo "Encrypted processed_items.txt -> processed_items.enc"
+            openssl enc -aes-256-cbc -pbkdf2 -in processed_items.txt -out processed_items.enc -k "${{ secrets.STATE_KEY }}"
           fi
 
       - name: Commit and Push encrypted state
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git pull --rebase --autostash
           git add token_cache.enc processed_items.enc || true
-          if git diff --cached --quiet; then
-            echo "No encrypted state changes."
-          else
-            git commit -m "Update encrypted state files"
-            git push
-          fi
+          git commit -m "Update encrypted state files" || exit 0
+          git pull --rebase
+          git push
