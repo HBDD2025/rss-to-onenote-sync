@@ -1,5 +1,3 @@
-name: RSS to OneNote Sync
-
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import os, sys, time, html, re, warnings
