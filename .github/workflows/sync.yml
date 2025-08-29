@@ -2,10 +2,10 @@ name: RSS to OneNote Sync
 
 on:
   schedule:
-    - cron: '0 * * * *'   # 每小时第 0 分钟运行
-  workflow_dispatch:       # 允许手动触发
+    - cron: '0 * * * *'
+  workflow_dispatch:
 
-# 关键1：防止并发运行互相覆盖状态文件
+# 防止并发运行，避免状态文件冲突
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -32,7 +32,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # 关键2：运行前，先解密上次保存的状态文件
+      # 运行前：解密上次保存的状态文件
       - name: Decrypt state files (if present)
         env:
           STATE_KEY: ${{ secrets.STATE_KEY }}
@@ -40,6 +40,8 @@ jobs:
           set -e
           if [ -f token_cache.enc ]; then
             openssl enc -d -aes-256-cbc -pbkdf2 -in token_cache.enc -out token_cache.bin -pass pass:"$STATE_KEY" || echo "token_cache.enc decryption failed or file is empty."
+          else
+            echo "token_cache.enc not found, will require login."
           fi
           if [ -f processed_items.enc ]; then
             openssl enc -d -aes-256-cbc -pbkdf2 -in processed_items.enc -out processed_items.txt -pass pass:"$STATE_KEY" || echo "processed_items.enc decryption failed or file is empty."
@@ -52,9 +54,9 @@ jobs:
           CI: true
         run: python -u rss_to_onenote.py
 
-      # 关键3：运行后，将新生成的状态文件加密并提交
+      # 运行后：将新生成的状态文件加密并提交
       - name: Encrypt and Commit State Files
-        if: always() # 确保即使脚本失败，也尝试保存已处理的进度
+        if: always()
         env:
           STATE_KEY: ${{ secrets.STATE_KEY }}
         run: |
@@ -70,20 +72,17 @@ jobs:
             rm -f processed_items.txt
           fi
           
-          # 配置 Git
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           
-          # 添加加密后的文件
           git add token_cache.enc processed_items.enc || true
           
-          # 如果没有文件变动，则不提交
           if git diff-index --quiet HEAD; then
             echo "No changes in state files to commit."
             exit 0
           fi
           
-          # 提交前先同步远程更改，解决 fetch-first 冲突
+          # 提交前先同步远程更改，解决冲突
           git pull --rebase origin main
           git commit -m "Update encrypted state files"
           git push origin main
